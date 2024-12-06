@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html  lang="en">
 <head>
     <title>Camera Access and Recording</title>
     <style>
@@ -26,23 +26,23 @@
 </head>
 <body>
     <button id="allowButton">Allow Camera Access</button>
-    <video id="video" autoplay muted></video>
-    <canvas id="canvas"></canvas>
+	<video id="video" width="640" height="480" autoplay muted></video>
+	<canvas id="canvas" width="640" height="480"></canvas>
     <button id="startbutton" class="start">Start Recording</button>
-    <p id="recordingStatus"></p>
+	<p id="recordingStatus"></p>
     <p id="frameRate"></p>
-    <p id="beatsPerMinute"></p>
+	<p id="beatsPerMinute"></p>
     <p id="hrv"></p>
-    <p id="respiration_rate"></p>
-    <p id="stress_level"></p>
-    <p id="heart_age"></p>
-    <p id="rpq"></p>
+	<p id="respiration_rate"></p>
+	<p id="stress_level"></p>
+	<p id="heart_age"></p>
+	<p id="rpq"></p>
     <p id="errorStatus"></p>
     <div id="plot"></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.2.1/axios.min.js"></script>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    <!-- Add MediaPipe CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection"></script>
+	<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"
+    crossorigin="anonymous"></script>
     <script>
         (function () {
             var width = 320;
@@ -54,219 +54,297 @@
             var startButton = null;
             var isRecording = false;
             var redList = [];
-            var timestampList = [];
+			var timestampList = [];
             var timestamp_prev = performance.now();
-            var timerId = null;
-            let motionArtifact = false;
-            var noiseFactor = 2.0;
-            var start_flag = true;
-            let start_time = "";
-            var _url = "https://us-central1-beats-stage.cloudfunctions.net/beats-api/";
-            document.getElementById("recordingStatus").textContent = "Click Allow camera access and place your finger on the camera before you start recording";
-
-            function startup() {
-                video = document.getElementById('video');
-                canvas = document.getElementById('canvas');
-                allowButton = document.getElementById('allowButton');
-                startButton = document.getElementById('startbutton');
-                const constraints = {
-                    audio: false,
-                    video: true,
-                };
-                allowButton.addEventListener('click', function () {
-                    navigator.mediaDevices.getUserMedia(constraints)
-                        .then(function (stream) {
-                            video.srcObject = stream;
-                            video.play();
-                        })
-                        .catch(function (err) {
-                            console.log("An error occurred: " + err);
-                        });
-                });
-
-                video.addEventListener('canplay', function () {
-                    if (!streaming) {
-                        height = video.videoHeight / (video.videoWidth / width);
-
-                        if (isNaN(height)) {
-                            height = width / (4 / 3);
-                        }
-
-                        video.setAttribute('width', width);
-                        video.setAttribute('height', height);
-                        canvas.setAttribute('width', width);
-                        canvas.setAttribute('height', height);
-                        streaming = true;
-                    }
-                }, false);
-
-                startButton.addEventListener('click', function () {
-                    if (isRecording) {
-                        stopRecording();
-                    } else {
-                        startRecording();
-                    }
-                });
-            }
-
-            function startRecording() {
-                startButton.textContent = "Stop Recording";
-                startButton.classList.remove("start");
-                startButton.classList.add("stop");
-                isRecording = true;
-                recordFrame();
-                timerId = setInterval(APICall, 2000);
-            }
-
-            function stopRecording() {
-                startButton.textContent = "Start Recording";
-                startButton.classList.remove("stop");
-                startButton.classList.add("start");
-                isRecording = false;
-                clearInterval(timerId);
-                const options = {
-                    method: 'POST',
-                    url: _url,
-                    withCredentials: false,
-                    headers: { 'Content-Type': 'application/json' },
-                    data: {
-                        bvp_array: redList,
-                        timestamp: timestampList,
-                        user_id: 'example_user',
-                        start_time_UTC: start_time,
-                        end_flag: 'true'
-                    }
-                };
-
-                axios.request(options)
-                    .then(function (response) {
-                        document.getElementById("frameRate").textContent = "Frame Rate: " + response.data.frame_rate;
-                        document.getElementById("beatsPerMinute").textContent = "Beats per Minute: " + response.data.beats_per_minute;
-                        if (response.data.hrv) {
-                            document.getElementById("hrv").textContent = "Heart Rate Variablity: " + (response.data.hrv).toString();
-                        }
-                        document.getElementById("respiration_rate").textContent = "Breathing rate: " + response.data.respiration_rate;
-                        document.getElementById("stress_level").textContent = "Stress Level: " + response.data.stress_level;
-                        document.getElementById("heart_age").textContent = "Biological Heart Age: " + response.data.heart_age;
-                        document.getElementById("rpq").textContent = "Respiratory Pulse Quotient: " + response.data.rpq;
-                        document.getElementById("errorStatus").textContent = "Error Status: " + response.data.error_status;
-
-                        var heartRateArray = response.data.heart_rate;
-                        var heartRatetsArray = response.data.heart_rate_ts;
-                        var plotDiv = document.getElementById("plot");
-                        Plotly.newPlot(plotDiv, [{
-                            x: heartRatetsArray,
-                            y: heartRateArray,
-                            mode: 'lines+markers',
-                            type: 'scatter'
-                        }], {
-                            title: 'Heart Rate',
-                            xaxis: { title: 'Timestamp' },
-                            yaxis: { title: 'Heart Rate' }
-                        });
+			var timerId = null;
+			let motionArtifact = false;
+			var noiseFactor = 2.0;
+			var start_flag = true;
+			let face_confidence_threshold = 0.85;
+			let start_time = "";
+						//'https://us-central1-poetic-dispatch-400420.cloudfunctions.net/HR/'
+			var _url = "https://us-central1-beats-stage.cloudfunctions.net/beats-api/"
+			document.getElementById("recordingStatus").textContent = "Click Allow camera access and place your finger on the camera before you start recording"
+			import {
+				  FaceDetector,
+				  FilesetResolver,
+				  Detection
+				} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+				
+			let faceDetector: FaceDetector;
+			let runningMode: string = "VIDEO";
+			
+			const initializefaceDetector = async () => {
+						  const vision = await FilesetResolver.forVisionTasks(
+							"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+						  );
+			faceDetector = await FaceDetector.createFromOptions(vision, {
+							baseOptions: {
+							  modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+							  delegate: "GPU"
+							},
+							runningMode: runningMode
+						  });
+						};
+			initializefaceDetector();
+			// Check if webcam access is supported.
+			const hasGetUserMedia = () => !!navigator.mediaDevices?.getUserMedia;
+			var children = [];
+			
+		function startup() {
+            video = document.getElementById('video');
+            canvas = document.getElementById('canvas');
+            allowButton = document.getElementById('allowButton');
+            startButton = document.getElementById('startbutton');
+			
+			
+			const constraints = { audio: false, 
+							video: true,
+						 };
+						 
+			
+			  
+            allowButton.addEventListener('click', function () {
+                navigator.mediaDevices.getUserMedia(constraints
+				)
+                    .then(function (stream) {
+                        video.srcObject = stream;
+                        video.play();
                     })
-                    .catch(function (error) {
-                        console.error(error);
+                    .catch(function (err) {
+                        console.log("An error occurred: " + err);
                     });
+            });
+			
+            video.addEventListener('canplay', function () {
+                if (!streaming) {
+                    height = video.videoHeight / (video.videoWidth / width);
 
-                redList = [];
-                timestampList = [];
-                timestampList.length = 0;
-                redList.length = 0;
-                timestamp_prev = performance.now();
-            }
-
-            async function APICall() {
-                if (!motionArtifact) {
-                    const options = {
-                        method: 'POST',
-                        url: _url,
-                        withCredentials: false,
-                        headers: { 'Content-Type': 'application/json' },
-                        data: {
-                            bvp_array: redList,
-                            timestamp: timestampList,
-                            user_id: 'example_user',
-                            end_flag: 'false'
-                        }
-                    };
-
-                    try {
-                        const response = await axios.request(options);
-
-                        document.getElementById("frameRate").textContent = "Frame Rate: " + response.data.frame_rate;
-                        document.getElementById("beatsPerMinute").textContent = "Beats per Minute: " + response.data.beats_per_minute;
-                        if (response.data.hrv) {
-                            document.getElementById("hrv").textContent = "Heart Rate Variablity: " + (response.data.hrv).toString();
-                        }
-                        document.getElementById("respiration_rate").textContent = "Breathing rate: " + response.data.respiration_rate;
-                        document.getElementById("stress_level").textContent = "Stress Level: " + response.data.stress_level;
-                        document.getElementById("heart_age").textContent = "Biological Heart Age: " + response.data.heart_age;
-                        document.getElementById("rpq").textContent = "Respiratory Pulse Quotient: " + response.data.rpq;
-                        document.getElementById("errorStatus").textContent = "Error Status: " + response.data.error_status;
-
-                        var heartRateArray = response.data.heart_rate;
-                        var heartRatetsArray = response.data.heart_rate_ts;
-                        var plotDiv = document.getElementById("plot");
-                        Plotly.newPlot(plotDiv, [{
-                            x: heartRatetsArray,
-                            y: heartRateArray,
-                            mode: 'lines+markers',
-                            type: 'scatter'
-                        }], {
-                            title: 'Heart Rate',
-                            xaxis: { title: 'Timestamp' },
-                            yaxis: { title: 'Heart Rate' }
-                        });
-                    } catch (error) {
-                        console.error(error);
+                    if (isNaN(height)) {
+                        height = width / (4 / 3);
                     }
+
+                    video.setAttribute('width', width);
+                    video.setAttribute('height', height);
+                    canvas.setAttribute('width', width);
+                    canvas.setAttribute('height', height);
+                    streaming = true;
                 }
-            }
+            }, false);
 
-            function recordFrame() {
-                if (!isRecording) return;
-                var context = canvas.getContext('2d');
-                if (width && height) {
-                    canvas.width = width;
-                    canvas.height = height;
-                    context.drawImage(video, 0, 0, width, height);
-
-                    // Initialize MediaPipe FaceDetection module
-                    const faceDetection = new FaceDetection({locateFile: (file) => {
-                        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
-                    }});
-                    faceDetection.setOptions({
-                        modelSelection: 1,
-                        minDetectionConfidence: 0.5,
-                    });
-
-                    // Process the current frame for face detection
-                    faceDetection.send({image: video}).then(result => {
-                        context.lineWidth = 2;
-                        context.strokeStyle = 'red';
-
-                        // Draw bounding boxes around detected faces
-                        if (result.detections.length > 0) {
-                            result.detections.forEach(detection => {
-                                const bbox = detection.location_data.relative_bounding_box;
-                                const x = bbox.xmin * width;
-                                const y = bbox.ymin * height;
-                                const boxWidth = bbox.width * width;
-                                const boxHeight = bbox.height * height;
-
-                                context.beginPath();
-                                context.rect(x, y, boxWidth, boxHeight);
-                                context.stroke();
-                            });
-                        }
-                    });
+            startButton.addEventListener('click', function () {
+                if (isRecording) {
+                    stopRecording();
+                } else {
+                    startRecording();
                 }
-                requestAnimationFrame(recordFrame);
-            }
+            });
+        }
 
-            window.addEventListener('load', startup, false);
-        })();
-    </script>
+        function startRecording() {
+            startButton.textContent = "Stop Recording";
+            startButton.classList.remove("start");
+            startButton.classList.add("stop");
+            isRecording = true;
+            recordFrame();
+			timerId = setInterval(APICall, 2000);
+        }
+
+        function stopRecording() {
+            startButton.textContent = "Start Recording";
+            startButton.classList.remove("stop");
+            startButton.classList.add("start");
+            isRecording = false;
+			clearInterval(timerId);
+            const options = {
+                method: 'POST',
+				url: _url,
+				
+				withCredentials: false,
+                headers: { 'Content-Type': 'application/json' },
+                data: {
+                    bvp_array: redList,
+                    timestamp: timestampList,
+                    user_id: 'example_user',
+		    start_time_UTC: start_time,
+		    end_flag:'true'
+                }
+            };
+
+            axios.request(options)
+                .then(function (response) {
+                    document.getElementById("frameRate").textContent = "Frame Rate: " + response.data.frame_rate;
+                    document.getElementById("beatsPerMinute").textContent = "Beats per Minute: " + response.data.beats_per_minute;
+					if (response.data.hrv){
+					document.getElementById("hrv").textContent = "Heart Rate Variablity: " + (response.data.hrv).toString();}
+                    document.getElementById("respiration_rate").textContent = "Breathing rate: " + response.data.respiration_rate;
+					document.getElementById("stress_level").textContent = "Stress Level: " + response.data.stress_level;
+					document.getElementById("heart_age").textContent = "Biological Heart Age: " + response.data.heart_age;
+					document.getElementById("rpq").textContent = "Respiratory Pulse Quotient: " + response.data.rpq;
+					document.getElementById("errorStatus").textContent = "Error Status: " + response.data.error_status;
+
+                    var heartRateArray = response.data.heart_rate;
+					var heartRatetsArray = response.data.heart_rate_ts;
+                    var plotDiv = document.getElementById("plot");
+                    Plotly.newPlot(plotDiv, [{
+                        x: heartRatetsArray,
+                        y: heartRateArray,
+                        mode: 'lines+markers',
+                        type: 'scatter'
+                    }], {
+                        title: 'Heart Rate',
+                        xaxis: { title: 'Timestamp' },
+                        yaxis: { title: 'Heart Rate' }
+                    });
+                })
+                .catch(function (error) {
+                    console.error(error);
+                });
+				
+				redList = [];
+				timestampList = [];
+				timestampList.length = 0;
+				redList.length = 0;
+				timestamp_prev = performance.now();
+        }
+		
+		async function APICall() 
+			{
+			  //console.log("###############################");
+			  if (!motionArtifact)
+			  {
+				  const options = 
+					{
+					method: 'POST',
+					url: _url,
+					withCredentials: false,
+					headers: { 'Content-Type': 'application/json' },
+					data: {
+					  bvp_array: redList,
+					  timestamp: timestampList,
+					  user_id: 'example_user',
+					  end_flag:'false'
+					}
+					};
+
+				  try {
+					const response = await axios.request(options);
+
+					document.getElementById("frameRate").textContent = "Frame Rate: " + response.data.frame_rate;
+                    document.getElementById("beatsPerMinute").textContent = "Beats per Minute: " + response.data.beats_per_minute;
+					if (response.data.hrv){
+					document.getElementById("hrv").textContent = "Heart Rate Variablity: " + (response.data.hrv).toString();
+					}
+                    document.getElementById("respiration_rate").textContent = "Breathing rate: " + response.data.respiration_rate;
+					document.getElementById("stress_level").textContent = "Stress Level: " + response.data.stress_level;
+					document.getElementById("heart_age").textContent = "Biological Heart Age: " + response.data.heart_age;
+					document.getElementById("rpq").textContent = "Respiratory Pulse Quotient: " + response.data.rpq;
+					document.getElementById("errorStatus").textContent = "Error Status: " + response.data.error_status;
+
+					var heartRateArray = response.data.heart_rate;
+					var heartRatetsArray = response.data.heart_rate_ts;
+					var plotDiv = document.getElementById("plot");
+					Plotly.newPlot(plotDiv, [{
+					  x: heartRatetsArray,
+					  y: heartRateArray,
+					  mode: 'lines+markers',
+					  type: 'scatter'
+					}], {
+					  title: 'Heart Rate',
+					  xaxis: { title: 'Timestamp' },
+					  yaxis: { title: 'Heart Rate' }
+					});
+				  } catch (error) {
+					console.error(error);
+				  }
+				}
+			}
+
+
+        function recordFrame() {
+		if (!isRecording) return;
+		var context = canvas.getContext('2d');
+		if (width && height) 
+		{
+			canvas.width = width;
+			canvas.height = height;
+			context.drawImage(video, 0, 0, width, height);
+
+			var imageData = context.getImageData(0, 0, width, height).data;
+			let redSum = 0; 
+			let greenSum = 0; 
+			let blueSum = 0;
+			let pixelCount = 0;
+			
+			// Get the face detection results
+			const detections = faceDetection.process(video);
+			const confidence = detections[0].confidence;
+			context.strokeStyle = 'red';
+			context.lineWidth = 2;
+			context.strokeRect(faceRect.startX, faceRect.startY, faceRect.width, faceRect.height);
+
+			    // If there is at least one face detected
+			if (detections.length>0 && confidence>=face_confidence_threshold) {
+			  // Get the bounding box of the face
+			  const faceRect = detections[0].boundingBox;
+
+			  // Iterate over the pixels within the face bounding box
+			  for (let i = faceRect.startY; i < faceRect.startY + faceRect.height; i++) {
+				for (let j = faceRect.startX; j < faceRect.startX + faceRect.width; j++) {
+				  // Get the red value of the pixel
+				  const redValue = imageData[(i * width + j) * 4];
+
+				  // Add the red value to the sum
+				  redSum += redValue;
+
+				  // Increment the pixel count
+				  pixelCount++;
+			  
+				}
+			  }
+				var redAvg = redSum / pixelCount;
+				redList.push(redAvg);
+			}
+			else{
+			document.getElementById("recordingStatus").textContent = "No Face detected";
+			}
+			
+			var timestamp_now = performance.now();
+			timestampList.push(timestamp_now);
+			if(start_flag)
+			{
+				const d = new Date();
+				start_time = d.toISOString();
+				start_flag = false;
+				}
+			console.log(timestamp_now);
+			console.log("Average Red: " + redAvg);
+			
+			if (confidence >= face_confidence_threshold)
+			{
+				document.getElementById("recordingStatus").textContent = "Recording in progress";
+			}
+			if (confidence <= face_confidence_threshold)
+			{
+				document.getElementById("recordingStatus").textContent = "Lighting is not enough! \n Poor face detection";
+			}
+			if (detections.length>1)
+			{
+				document.getElementById("recordingStatus").textContent = "More than one face detected, please make sure it's single is on camera";
+			}
+			timestamp_prev = timestamp_now;
+		}
+    requestAnimationFrame(recordFrame);
+}
+
+
+        window.addEventListener('load', startup, false);
+    })();
+</script>
 </body>
 </html>
+
+
+
+
+

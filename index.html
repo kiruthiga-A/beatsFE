@@ -1,49 +1,366 @@
 <!DOCTYPE html>
-<html  lang="en">
+<html lang="en">
 <head>
-    <title>Camera Access and Recording</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vitals Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.2.1/axios.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
-        #video {
-            width: 320px;
-            height: auto;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
-        #canvas {
-            display: none;
+
+        body {
+            background-color: #f5f5f5;
+            padding: 1rem;
         }
-        #photo {
-            width: 320px;
-            height: auto;
+
+        .container {
+            max-width: 1024px;
+            margin: 0 auto;
         }
-        .start {
-            background-color: green;
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+            padding: 1.5rem;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .progress-container {
+            margin-bottom: 1.5rem;
+        }
+
+        .progress-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 2rem;
+            background-color: #e5e7eb;
+            border-radius: 9999px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-value {
+            height: 100%;
+            background-color: white;  /* Start with white */
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.875rem;
+        }
+
+        .progress-value.has-value {
+            background-color: #3b82f6;  /* Blue when has value */
+        }
+        .progress-scale {
+            position: relative;
+            width: 100%;
+            height: 20px;
+            margin-top: -10px;
+        }
+
+        .scale-mark {
+            position: absolute;
+            width: 1px;
+            height: 8px;
+            background-color: #cbd5e1;
+            transform: translateX(-50%);
+        }
+
+        .scale-mark-label {
+            position: absolute;
+            transform: translateX(-50%);
+            top: 10px;
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+        .age-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .age-box {
+            padding: 0.75rem;
+            text-align: center;
+            border-radius: 0.5rem;
+            background-color: #f3f4f6;
+            transition: transform 0.2s;
+        }
+
+        .age-box:hover {
+            transform: scale(1.05);
+        }
+
+        .age-box.active {
+            background-color: #3b82f6;
             color: white;
         }
-        .stop {
-            background-color: red;
-            color: white;
+
+        .icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            vertical-align: middle;
+        }
+
+        #plot {
+            width: 100%;
+            height: 300px;
+        }
+
+        @media (max-width: 640px) {
+            .age-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
 <body>
-    <button id="allowButton">Allow Camera Access</button>
-    <a href="face.html">Face Vitals</a>
-    <video id="video" autoplay muted></video>
-    <canvas id="canvas"></canvas>
-    <button id="startbutton" class="start">Start Recording</button>
-	<p id="recordingStatus"></p>
-    <p id="frameRate"></p>
-	<p id="beatsPerMinute"></p>
-    <p id="hrv"></p>
-	<p id="respiration_rate"></p>
-	<p id="stress_level"></p>
-	<p id="heart_age"></p>
-	<p id="rpq"></p>
-    <p id="errorStatus"></p>
-    <div id="plot"></div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.2.1/axios.min.js"></script>
-	<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <div class="container">
+        <button id="allowButton">Allow Camera Access</button>
+        <video id="video" autoplay muted style="width: 320px; height: auto;"></video>
+        <canvas id="canvas" style="display: none;"></canvas>
+        <button id="startbutton" class="start">Start Recording</button>
+        <p id="recordingStatus"></p>
+
+        <div class="card">
+            <div class="card-header">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+                <h1 class="card-title">Vital Signs Monitor</h1>
+            </div>
+
+            <!-- Heart Rate -->
+            <div class="progress-container">
+                <div class="progress-header">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                    <span id="beatsPerMinute">Heart Rate: -- bpm</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-value" id="heartRateProgress"></div>
+                </div>
+                <div class="progress-scale" id="heartRateScale"></div>
+            </div>
+
+            <!-- Breathing Rate -->
+            <div class="progress-container">
+                <div class="progress-header">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+                        <path d="M2 2a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2H2V2z"/>
+                        <path d="M21 9H3v13h18V9zM7 16h10M7 12h10M7 20h10"/>
+                    </svg>
+                    <span id="respiration_rate">Breathing Rate: -- /min</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-value" id="breathingRateProgress"></div>
+                </div>
+                <div class="progress-scale" id="breathingRateScale"></div>
+            </div>
+
+            <!-- RPQ -->
+            <div class="progress-container">
+                <div class="progress-header">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2">
+                        <path d="M23 6l-9.5 9.5-5-5L1 18"/>
+                    </svg>
+                    <span id="rpq">RPQ: --</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-value" id="rpqProgress"></div>
+                </div>
+                <div class="progress-scale" id="rpqScale"></div>
+            </div>
+
+            <!-- Stress Level -->
+            <div class="progress-container">
+                <div class="progress-header">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    </svg>
+                    <span id="stress_level">Stress Level: --</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-value" id="stressProgress"></div>
+                </div>
+                <div class="progress-scale" id="stressScale"></div>
+            </div>
+
+            <!-- HRV -->
+            <div class="progress-container">
+                <div class="progress-header">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                    <span id="hrv">Heart Rate Variability: -- ms</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-value" id="hrvProgress"></div>
+                </div>
+                <div class="progress-scale" id="hrvScale"></div>
+            </div>
+
+            <!-- Heart Age -->
+            <div class="card-header">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                </svg>
+                <h2>Biological Heart Age</h2>
+            </div>
+            <div class="age-grid" id="heartAgeGrid"></div>
+        </div>
+
+        <!-- Plot Card -->
+        <div class="card">
+            <div class="card-header">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 6l-9.5 9.5-5-5L1 18"/>
+                </svg>
+                <h2 class="card-title">Heart Rate Trend</h2>
+            </div>
+            <div id="plot"></div>
+        </div>
+    </div>
+
     <script>
-        (function () {
+        // Initialize age ranges
+        const ageRanges = ['18-25', '26-35', '36-45', '46-55', '56-65', '66+'];
+        const heartAgeGrid = document.getElementById('heartAgeGrid');
+        ageRanges.forEach(range => {
+            const box = document.createElement('div');
+            box.className = 'age-box';
+            box.textContent = range;
+            box.id = `age-${range}`;
+            heartAgeGrid.appendChild(box);
+        });
+
+        // Helper function to update progress bar
+        function updateProgress(value, min, max, elementId) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                if (value === undefined || isNaN(value)) {
+                    element.style.width = '0%';
+                    element.textContent = '';
+                    element.classList.remove('has-value');  // Remove blue background
+                } else {
+                    const progress = Math.min(Math.max(((value - min) / (max - min)) * 100, 0), 100);
+                    element.style.width = `${progress}%`;
+                    element.textContent = value.toFixed(1);
+                    element.classList.add('has-value');  // Add blue background
+                }
+            }
+        }
+
+        // Update heart age display
+        function updateHeartAge(age) {
+            ageRanges.forEach(range => {
+                const box = document.getElementById(`age-${range}`);
+                box.className = 'age-box' + (range === age ? ' active' : '');
+            });
+        }
+
+        function createScale(containerId, min, max, steps) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const range = max - min;
+            const stepSize = range / steps;
+
+            for (let i = 0; i <= steps; i++) {
+                const mark = document.createElement('div');
+                mark.className = 'scale-mark';
+                const value = min + (stepSize * i);
+                const position = (i / steps) * 100;
+                mark.style.left = `${position}%`;
+
+                const label = document.createElement('div');
+                label.className = 'scale-mark-label';
+                label.textContent = Math.round(value);
+                label.style.left = `${position}%`;
+
+                container.appendChild(mark);
+                container.appendChild(label);
+            }
+        }
+
+        // Modify your existing API response handling
+        function handleApiResponse(response) {
+            console.log(`Frame Rate: ${response.data.frame_rate}, Error Status: ${response.data.error_status}`);
+            
+            // Update heart rate
+            const hr = response.data.beats_per_minute;
+            document.getElementById('beatsPerMinute').textContent = `Heart Rate: ${hr.toFixed(1)} bpm`;
+            updateProgress(hr, 30, 200, 'heartRateProgress');
+            
+            // Update breathing rate
+            const br = response.data.respiration_rate;
+            document.getElementById('respiration_rate').textContent = `Breathing Rate: ${br.toFixed(1)} /min`;
+            updateProgress(br, 1, 30, 'breathingRateProgress');
+            
+            // Update RPQ
+            const rpq = response.data.rpq;
+            document.getElementById('rpq').textContent = `RPQ: ${rpq.toFixed(1)}`;
+            updateProgress(rpq, 1, 12, 'rpqProgress');
+            
+            // Update stress level
+            const stress = response.data.stress_level;
+            document.getElementById('stress_level').textContent = `Stress Level: ${stress.toFixed(1)}`;
+            updateProgress(stress, 0, 20, 'stressProgress');
+            
+            // Update HRV
+            const hrv = response.data.hrv;
+            document.getElementById('hrv').textContent = `Heart Rate Variability: ${hrv.toFixed(1)} ms`;
+            updateProgress(hrv, 10, 180, 'hrvProgress');
+            
+            // Update heart age
+            updateHeartAge(response.data.heart_age);
+            
+            // Update plot
+            var plotDiv = document.getElementById("plot");
+            Plotly.newPlot(plotDiv, [{
+                x: response.data.heart_rate_ts,
+                y: response.data.heart_rate,
+                mode: 'lines+markers',
+                type: 'scatter'
+            }], {
+                title: 'Heart Rate Trend',
+                xaxis: { title: 'Time' },
+                yaxis: { title: 'Heart Rate (bpm)' }
+            });
+        }
+
+        // Camera and recording functionality
+        (function() {
             var width = 320;
             var height = 0;
             var streaming = false;
@@ -53,248 +370,189 @@
             var startButton = null;
             var isRecording = false;
             var redList = [];
-			var timestampList = [];
+            var timestampList = [];
             var timestamp_prev = performance.now();
-			var timerId = null;
-			let motionArtifact = false;
-			var noiseFactor = 2.0;
-			var start_flag = true
-			let start_time = "";
-						//'https://us-central1-poetic-dispatch-400420.cloudfunctions.net/HR/'
-			var _url = "https://us-central1-beats-stage.cloudfunctions.net/beats-api/"
-			document.getElementById("recordingStatus").textContent = "Click Allow camera access and place your finger on the camera before you start recording"
-        function startup() {
-            video = document.getElementById('video');
-            canvas = document.getElementById('canvas');
-            allowButton = document.getElementById('allowButton');
-            startButton = document.getElementById('startbutton');
-			const constraints = { audio: false, 
-							video: true,
-						 };
-            allowButton.addEventListener('click', function () {
-                navigator.mediaDevices.getUserMedia(constraints
-				)
-                    .then(function (stream) {
-                        video.srcObject = stream;
-                        video.play();
+            var timerId = null;
+            var motionArtifact = false;
+            var noiseFactor = 2.0;
+            var start_flag = true;
+            var start_time = "";
+            
+            var _url = "https://us-central1-beats-stage.cloudfunctions.net/beats-api/";
+            
+            document.getElementById("recordingStatus").textContent = "Click Allow camera access and place your finger on the camera before you start recording";
+
+            function startup() {
+                video = document.getElementById('video');
+                canvas = document.getElementById('canvas');
+                allowButton = document.getElementById('allowButton');
+                startButton = document.getElementById('startbutton');
+                 // Initialize scales for each progress bar
+                createScale('heartRateScale', 30, 200, 8);  // Heart Rate
+                createScale('breathingRateScale', 1, 30, 5);  // Breathing Rate
+                createScale('rpqScale', 1, 12, 5);  // RPQ
+                createScale('stressScale', 0, 20, 5);  // Stress Level
+                createScale('hrvScale', 10, 180, 8);  // HRV
+
+                const constraints = { 
+                    audio: false, 
+                    video: true
+                };
+
+                allowButton.addEventListener('click', function() {
+                    navigator.mediaDevices.getUserMedia(constraints)
+                        .then(function(stream) {
+                            video.srcObject = stream;
+                            video.play();
+                        })
+                        .catch(function(err) {
+                            console.log("An error occurred: " + err);
+                        });
+                });
+
+                video.addEventListener('canplay', function() {
+                    if (!streaming) {
+                        height = video.videoHeight / (video.videoWidth / width);
+                        if (isNaN(height)) {
+                            height = width / (4 / 3);
+                        }
+                        video.setAttribute('width', width);
+                        video.setAttribute('height', height);
+                        canvas.setAttribute('width', width);
+                        canvas.setAttribute('height', height);
+                        streaming = true;
+                    }
+                }, false);
+
+                startButton.addEventListener('click', function() {
+                    if (isRecording) {
+                        stopRecording();
+                    } else {
+                        startRecording();
+                    }
+                });
+            }
+
+            function startRecording() {
+                startButton.textContent = "Stop Recording";
+                startButton.classList.remove("start");
+                startButton.classList.add("stop");
+                isRecording = true;
+                recordFrame();
+                timerId = setInterval(APICall, 2000);
+            }
+
+            function stopRecording() {
+                startButton.textContent = "Start Recording";
+                startButton.classList.remove("stop");
+                startButton.classList.add("start");
+                isRecording = false;
+                clearInterval(timerId);
+                
+                const options = {
+                    method: 'POST',
+                    url: _url,
+                    withCredentials: false,
+                    headers: { 'Content-Type': 'application/json' },
+                    data: {
+                        bvp_array: redList,
+                        timestamp: timestampList,
+                        user_id: 'example_user',
+                        start_time_UTC: start_time,
+                        end_flag: 'true'
+                    }
+                };
+
+                axios.request(options)
+                    .then(function(response) {
+                        handleApiResponse(response);
                     })
-                    .catch(function (err) {
-                        console.log("An error occurred: " + err);
+                    .catch(function(error) {
+                        console.error(error);
                     });
-            });
 
-            video.addEventListener('canplay', function () {
-                if (!streaming) {
-                    height = video.videoHeight / (video.videoWidth / width);
+                redList = [];
+                timestampList = [];
+                timestamp_prev = performance.now();
+            }
 
-                    if (isNaN(height)) {
-                        height = width / (4 / 3);
+            async function APICall() {
+                if (!motionArtifact) {
+                    const options = {
+                        method: 'POST',
+                        url: _url,
+                        withCredentials: false,
+                        headers: { 'Content-Type': 'application/json' },
+                        data: {
+                            bvp_array: redList,
+                            timestamp: timestampList,
+                            user_id: 'example_user',
+                            end_flag: 'false'
+                        }
+                    };
+
+                    try {
+                        const response = await axios.request(options);
+                        handleApiResponse(response);
+                    } catch (error) {
+                        console.error(error);
+                    }
+                }
+            }
+
+            function recordFrame() {
+                if (!isRecording) return;
+                
+                var context = canvas.getContext('2d');
+                if (width && height) {
+                    canvas.width = width;
+                    canvas.height = height;
+                    context.drawImage(video, 0, 0, width, height);
+
+                    var imageData = context.getImageData(0, 0, width, height).data;
+                    var redSum = 0, greenSum = 0, blueSum = 0;
+
+                    for (var i = 0; i < imageData.length; i += 4) {
+                        redSum += imageData[i];
+                        greenSum += imageData[i + 1];
+                        blueSum += imageData[i + 2];
                     }
 
-                    video.setAttribute('width', width);
-                    video.setAttribute('height', height);
-                    canvas.setAttribute('width', width);
-                    canvas.setAttribute('height', height);
-                    streaming = true;
+                    var pixelCount = imageData.length / 4;
+                    var redAvg = redSum / pixelCount;
+                    var greenAvg = greenSum / pixelCount;
+                    var blueAvg = blueSum / pixelCount;
+
+                    redList.push(redAvg);
+
+                    var timestamp_now = performance.now();
+                    timestampList.push(timestamp_now);
+                    
+                    if (start_flag) {
+                        const d = new Date();
+                        start_time = d.toISOString();
+                        start_flag = false;
+                    }
+
+                    var motionArtifactBool = (redAvg >= (noiseFactor * greenAvg)) && (redAvg >= (noiseFactor * blueAvg));
+                    if (!motionArtifactBool) {
+                        document.getElementById("recordingStatus").textContent = "Finger is not on the camera!";
+                        motionArtifact = true;
+                    } else if (redAvg < 20 && !motionArtifactBool) {
+                        document.getElementById("recordingStatus").textContent = "Lighting is not enough! \nMove near window or turn on flashlight";
+                        motionArtifact = true;
+                    } else {
+                        document.getElementById("recordingStatus").textContent = "Right position, Hold it";
+                        motionArtifact = false;
+                    }
+                    
+                    timestamp_prev = timestamp_now;
                 }
-            }, false);
+                requestAnimationFrame(recordFrame);
+            }
 
-            startButton.addEventListener('click', function () {
-                if (isRecording) {
-                    stopRecording();
-                } else {
-                    startRecording();
-                }
-            });
-        }
-
-        function startRecording() {
-            startButton.textContent = "Stop Recording";
-            startButton.classList.remove("start");
-            startButton.classList.add("stop");
-            isRecording = true;
-            recordFrame();
-			timerId = setInterval(APICall, 2000);
-        }
-
-        function stopRecording() {
-            startButton.textContent = "Start Recording";
-            startButton.classList.remove("stop");
-            startButton.classList.add("start");
-            isRecording = false;
-			clearInterval(timerId);
-            const options = {
-                method: 'POST',
-				url: _url,
-				
-				withCredentials: false,
-                headers: { 'Content-Type': 'application/json' },
-                data: {
-                    bvp_array: redList,
-                    timestamp: timestampList,
-                    user_id: 'example_user',
-		    start_time_UTC: start_time,
-		    end_flag:'true'
-                }
-            };
-
-            axios.request(options)
-                .then(function (response) {
-                    document.getElementById("frameRate").textContent = "Frame Rate: " + response.data.frame_rate;
-                    document.getElementById("beatsPerMinute").textContent = "Beats per Minute: " + response.data.beats_per_minute;
-					if (response.data.hrv){
-					document.getElementById("hrv").textContent = "Heart Rate Variablity: " + (response.data.hrv).toString();}
-                    document.getElementById("respiration_rate").textContent = "Breathing rate: " + response.data.respiration_rate;
-					document.getElementById("stress_level").textContent = "Stress Level: " + response.data.stress_level;
-					document.getElementById("heart_age").textContent = "Biological Heart Age: " + response.data.heart_age;
-					document.getElementById("rpq").textContent = "Respiratory Pulse Quotient: " + response.data.rpq;
-					document.getElementById("errorStatus").textContent = "Error Status: " + response.data.error_status;
-
-                    var heartRateArray = response.data.heart_rate;
-					var heartRatetsArray = response.data.heart_rate_ts;
-                    var plotDiv = document.getElementById("plot");
-                    Plotly.newPlot(plotDiv, [{
-                        x: heartRatetsArray,
-                        y: heartRateArray,
-                        mode: 'lines+markers',
-                        type: 'scatter'
-                    }], {
-                        title: 'Heart Rate',
-                        xaxis: { title: 'Timestamp' },
-                        yaxis: { title: 'Heart Rate' }
-                    });
-                })
-                .catch(function (error) {
-                    console.error(error);
-                });
-				
-				redList = [];
-				timestampList = [];
-				timestampList.length = 0;
-				redList.length = 0;
-				timestamp_prev = performance.now();
-        }
-		
-		async function APICall() 
-			{
-			  //console.log("###############################");
-			  if (!motionArtifact)
-			  {
-				  const options = 
-					{
-					method: 'POST',
-					url: _url,
-					withCredentials: false,
-					headers: { 'Content-Type': 'application/json' },
-					data: {
-					  bvp_array: redList,
-					  timestamp: timestampList,
-					  user_id: 'example_user',
-					  end_flag:'false'
-					}
-					};
-
-				  try {
-					const response = await axios.request(options);
-
-					document.getElementById("frameRate").textContent = "Frame Rate: " + response.data.frame_rate;
-                    document.getElementById("beatsPerMinute").textContent = "Beats per Minute: " + response.data.beats_per_minute;
-					if (response.data.hrv){
-					document.getElementById("hrv").textContent = "Heart Rate Variablity: " + (response.data.hrv).toString();
-					}
-                    document.getElementById("respiration_rate").textContent = "Breathing rate: " + response.data.respiration_rate;
-					document.getElementById("stress_level").textContent = "Stress Level: " + response.data.stress_level;
-					document.getElementById("heart_age").textContent = "Biological Heart Age: " + response.data.heart_age;
-					document.getElementById("rpq").textContent = "Respiratory Pulse Quotient: " + response.data.rpq;
-					document.getElementById("errorStatus").textContent = "Error Status: " + response.data.error_status;
-
-					var heartRateArray = response.data.heart_rate;
-					var heartRatetsArray = response.data.heart_rate_ts;
-					var plotDiv = document.getElementById("plot");
-					Plotly.newPlot(plotDiv, [{
-					  x: heartRatetsArray,
-					  y: heartRateArray,
-					  mode: 'lines+markers',
-					  type: 'scatter'
-					}], {
-					  title: 'Heart Rate',
-					  xaxis: { title: 'Timestamp' },
-					  yaxis: { title: 'Heart Rate' }
-					});
-				  } catch (error) {
-					console.error(error);
-				  }
-				}
-			}
-
-
-        function recordFrame() {
-		if (!isRecording) return;
-		var context = canvas.getContext('2d');
-		if (width && height) 
-		{
-			canvas.width = width;
-			canvas.height = height;
-			context.drawImage(video, 0, 0, width, height);
-
-			var imageData = context.getImageData(0, 0, width, height).data;
-			var redSum = 0, greenSum = 0, blueSum = 0;
-
-			for (var i = 0; i < imageData.length; i += 4) {
-				redSum += imageData[i];
-				greenSum += imageData[i + 1];
-				blueSum += imageData[i + 2];
-			}
-			
-			
-			var pixelCount = imageData.length / 4;
-
-			var redAvg = redSum / pixelCount;
-			var greenAvg = greenSum / pixelCount;
-			var blueAvg = blueSum / pixelCount;
-
-			redList.push(redAvg);
-			
-			var timestamp_now = performance.now();
-			timestampList.push(timestamp_now);
-			if(start_flag)
-			{
-				const d = new Date();
-				start_time = d.toISOString();
-				start_flag = false;
-				}
-			console.log(timestamp_now)
-			console.log("Average Red: " + redAvg);
-			console.log("Average Green: " + greenAvg);
-			console.log("Average Blue: " + blueAvg);
-			var motionArtifactBool = (redAvg >= (noiseFactor*greenAvg)) && (redAvg >= (noiseFactor*blueAvg));
-			if (!motionArtifactBool)
-			{
-				document.getElementById("recordingStatus").textContent = "Finger is not on the camera!";
-				motionArtifact = true;
-			}
-			else if (redAvg < 20 && !motionArtifactBool)
-			{
-				document.getElementById("recordingStatus").textContent = "Lighting is not enough! \n Move near window or turn on flashlight";
-				motionArtifact = true;
-			}
-			else{
-				document.getElementById("recordingStatus").textContent = "Right position, Hold it";
-				motionArtifact = false;
-			}
-			timestamp_prev = timestamp_now;
-		}
-    requestAnimationFrame(recordFrame);
-}
-
-
-        window.addEventListener('load', startup, false);
-    })();
-</script>
+            window.addEventListener('load', startup, false);
+        })();
+    </script>
 </body>
 </html>
-
-
-
-
-
